@@ -74,7 +74,7 @@
     const ref = "LS-" + Date.now();
 
     PaystackPop.setup({
-      key: "pk_test_pk_test_1234567890abcdef", // 🔴 REPLACE WITH YOUR KEY
+      key: "pk_live_cd8547f6b4270551729c247d8d31635691c39a08", // 🔴 REPLACE WITH YOUR KEY
       email: USERNAME + "@lomashares.com",
       amount: amount * 100,
       currency: "NGN",
