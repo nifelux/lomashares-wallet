@@ -125,3 +125,148 @@
   document.addEventListener("DOMContentLoaded", renderWallet);
 
 })();
+// ===== USER IDENTIFIER =====
+const username = document.getElementById("user-name").content || "guest";
+document.getElementById("usernameText").innerText = username;
+
+// ===== WALLET KEY =====
+const WALLET_KEY = "wallet_" + username;
+
+// ===== CONFIG =====
+const SHARE_PRICE = 1000;
+const SHARE_RATE = 0.025;
+const SHARE_DAYS = 40;
+
+const NIFELUX = {
+  1: { cost: 5000, daily: 1000, days: 7 },
+  2: { cost: 13000, daily: 1500, days: 12 },
+  3: { cost: 21000, daily: 2000, days: 15 }
+};
+
+// ===== STORAGE =====
+function getWallet() {
+  return JSON.parse(localStorage.getItem(WALLET_KEY)) || {
+    balance: 0,
+    investments: []
+  };
+}
+
+function saveWallet(w) {
+  localStorage.setItem(WALLET_KEY, JSON.stringify(w));
+  renderWallet();
+}
+
+// ===== UI =====
+function renderWallet() {
+  const w = getWallet();
+  document.getElementById("balance").innerText = w.balance.toLocaleString();
+}
+
+// ===== LOMASHARES =====
+function buyShares() {
+  const shares = Number(document.getElementById("shareInput").value);
+  if (!shares || shares < 1) return alert("Invalid shares");
+
+  const cost = shares * SHARE_PRICE;
+  const w = getWallet();
+  if (w.balance < cost) return alert("Insufficient balance");
+
+  w.balance -= cost;
+
+  const now = Date.now();
+  w.investments.push({
+    id: "LS-" + now,
+    type: "LomaShares",
+    capital: cost,
+    daily: cost * SHARE_RATE,
+    start: now,
+    end: now + SHARE_DAYS * 86400000,
+    completed: false
+  });
+
+  saveWallet(w);
+  alert("Investment started");
+}
+
+// ===== NIFELUX =====
+function buyProduct(id) {
+  const p = NIFELUX[id];
+  const w = getWallet();
+  if (w.balance < p.cost) return alert("Insufficient balance");
+
+  w.balance -= p.cost;
+  const now = Date.now();
+
+  w.investments.push({
+    id: "NF-" + now,
+    type: "Nifelux",
+    capital: p.cost,
+    daily: p.daily,
+    start: now,
+    lastPaid: now,
+    end: now + p.days * 86400000,
+    completed: false
+  });
+
+  saveWallet(w);
+}
+
+// ===== AUTO PROCESS =====
+function processInvestments() {
+  const w = getWallet();
+  const now = Date.now();
+  let changed = false;
+
+  w.investments.forEach(inv => {
+
+    if (inv.completed) return;
+
+    // NIFELUX DAILY CREDIT
+    if (inv.type === "Nifelux") {
+      const days = Math.floor((now - inv.lastPaid) / 86400000);
+      if (days > 0) {
+        w.balance += days * inv.daily;
+        inv.lastPaid += days * 86400000;
+        changed = true;
+      }
+      if (now >= inv.end) inv.completed = true;
+    }
+
+    // LOMASHARES MATURITY
+    if (inv.type === "LomaShares" && now >= inv.end) {
+      const profit = inv.daily * SHARE_DAYS;
+      w.balance += inv.capital + profit;
+      inv.completed = true;
+      changed = true;
+    }
+
+  });
+
+  if (changed) saveWallet(w);
+}
+
+// ===== RENDER INVESTMENTS =====
+function renderInvestments() {
+  const w = getWallet();
+  const el = document.getElementById("investmentList");
+  if (!w.investments.length) {
+    el.innerHTML = "<p>No active investments</p>";
+    return;
+  }
+
+  el.innerHTML = w.investments.map(i => `
+    <div class="tx">
+      <b>${i.type}</b><br>
+      Capital: ₦${i.capital.toLocaleString()}<br>
+      Daily: ₦${i.daily.toLocaleString()}<br>
+      Status: ${i.completed ? "Completed" : "Running"}
+    </div>
+  `).join("");
+}
+
+// ===== INIT =====
+document.addEventListener("DOMContentLoaded", () => {
+  processInvestments();
+  renderWallet();
+  renderInvestments();
+});
