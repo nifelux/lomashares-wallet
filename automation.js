@@ -1,0 +1,1 @@
+(function () { try { if (typeof processInvestments === "function") { processInvestments(); console.log("LomaShares automation exe_cuted"); } } catch (e) { console.error("Automation error", e); } })(); 
