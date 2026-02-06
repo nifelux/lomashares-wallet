@@ -1,272 +1,128 @@
-(function () {
-  "use strict";
+/*************************************************
+ * LomaShares Wallet Engine (Frontend)
+ * Paystack Enabled
+ *************************************************/
 
-  // ===== GET USERNAME FROM WAPKIZ =====
-  const userEl = document.getElementById("userData");
-  if (!userEl || !userEl.dataset.username) {
-    console.error("LomaShares: User not detected");
+const PAYSTACK_PUBLIC_KEY = "pk_live_cd8547f6b4270551729c247d8d31635691c39a08";
+
+/* STORAGE KEYS */
+const WALLET_KEY = "lomashares_wallet_balance";
+const TX_KEY = "lomashares_wallet_transactions";
+
+/* INITIALIZE */
+if (!localStorage.getItem(WALLET_KEY)) {
+  localStorage.setItem(WALLET_KEY, JSON.stringify(0));
+}
+if (!localStorage.getItem(TX_KEY)) {
+  localStorage.setItem(TX_KEY, JSON.stringify([]));
+}
+
+/* HELPERS */
+function getWalletBalance() {
+  return JSON.parse(localStorage.getItem(WALLET_KEY)) || 0;
+}
+
+function setWalletBalance(amount) {
+  localStorage.setItem(WALLET_KEY, JSON.stringify(amount));
+}
+
+function getTransactions() {
+  return JSON.parse(localStorage.getItem(TX_KEY)) || [];
+}
+
+function saveTransaction(tx) {
+  const txs = getTransactions();
+  txs.push(tx);
+  localStorage.setItem(TX_KEY, JSON.stringify(txs));
+}
+
+/* FORMAT */
+function formatNaira(amount) {
+  return "₦" + amount.toLocaleString();
+}
+
+/*************************************************
+ * PAYSTACK DEPOSIT
+ *************************************************/
+function fundWallet(amount, email = "user@lomashares.com") {
+  amount = Number(amount);
+
+  if (amount < 100) {
+    alert("Minimum deposit is ₦100");
     return;
   }
 
-  const USERNAME = userEl.dataset.username;
-  const WALLET_KEY = "lomashares_wallet_" + USERNAME;
-
-  // ===== WALLET CORE =====
-  function getWallet() {
-    return JSON.parse(localStorage.getItem(WALLET_KEY)) || {
-      approved: 0,
-      pending: 0,
-      txs: []
-    };
-  }
-
-  function saveWallet(wallet) {
-    localStorage.setItem(WALLET_KEY, JSON.stringify(wallet));
-    renderWallet();
-  }
-
-  // ===== UI RENDER =====
-  function renderWallet() {
-    const wallet = getWallet();
-
-    const approvedEl = document.getElementById("approved");
-    const pendingEl = document.getElementById("pending");
-    const withdrawBtn = document.getElementById("withdrawBtn");
-    const txList = document.getElementById("transactions");
-
-    if (approvedEl) approvedEl.innerText = wallet.approved.toLocaleString();
-    if (pendingEl) pendingEl.innerText = wallet.pending.toLocaleString();
-
-    if (withdrawBtn) {
-      withdrawBtn.disabled = wallet.approved < 1000;
+  const handler = PaystackPop.setup({
+    key: PAYSTACK_PUBLIC_KEY,
+    email: email,
+    amount: amount * 100,
+    currency: "NGN",
+    ref: "LS_" + Date.now(),
+    callback: function (response) {
+      creditWallet(amount, response.reference);
+      alert("Deposit successful");
+    },
+    onClose: function () {
+      alert("Payment cancelled");
     }
-
-    if (txList) {
-      if (wallet.txs.length === 0) {
-        txList.innerHTML = "<p>No transactions yet</p>";
-      } else {
-        let html = "";
-        wallet.txs.forEach(tx => {
-          html += `
-            <div class="tx">
-              <strong>${tx.type}</strong> ₦${tx.amount.toLocaleString()}<br>
-              <small>${tx.ref}</small><br>
-              <span class="status ${tx.status.toLowerCase()}">${tx.status}</span>
-            </div>
-          `;
-        });
-        txList.innerHTML = html;
-      }
-    }
-  }
-
-  // ===== PAYSTACK DEPOSIT =====
-  window.lomaPay = function () {
-    const amountInput = document.getElementById("amount");
-    if (!amountInput) return;
-
-    const amount = Number(amountInput.value);
-    if (!amount || amount < 100) {
-      alert("Minimum deposit is ₦100");
-      return;
-    }
-
-    const ref = "LS-" + Date.now();
-
-    PaystackPop.setup({
-      key: "pk_live_cd8547f6b4270551729c247d8d31635691c39a08", // 🔴 REPLACE WITH YOUR KEY
-      email: USERNAME + "@lomashares.com",
-      amount: amount * 100,
-      currency: "NGN",
-      ref: ref,
-      callback: function () {
-        const wallet = getWallet();
-        wallet.pending += amount;
-        wallet.txs.unshift({
-          type: "Deposit",
-          amount: amount,
-          ref: ref,
-          status: "Pending"
-        });
-        saveWallet(wallet);
-        alert("Deposit submitted. Awaiting admin approval.");
-      }
-    }).openIframe();
-  };
-
-  // ===== WITHDRAW REQUEST =====
-  window.lomaWithdraw = function () {
-    const wallet = getWallet();
-    const amount = Number(prompt("Enter withdrawal amount (₦)"));
-
-    if (!amount || amount < 1000) {
-      alert("Minimum withdrawal is ₦1,000");
-      return;
-    }
-
-    if (amount > wallet.approved) {
-      alert("Insufficient balance");
-      return;
-    }
-
-    wallet.approved -= amount;
-    wallet.txs.unshift({
-      type: "Withdrawal",
-      amount: amount,
-      ref: "WD-" + Date.now(),
-      status: "Pending"
-    });
-
-    saveWallet(wallet);
-    alert("Withdrawal request submitted. Awaiting admin processing.");
-  };
-
-  // ===== INITIAL LOAD =====
-  document.addEventListener("DOMContentLoaded", renderWallet);
-
-})();
-// ===== USER IDENTIFIER =====
-const username = document.getElementById("user-name").content || "guest";
-document.getElementById("usernameText").innerText = username;
-
-// ===== WALLET KEY =====
-const WALLET_KEY = "wallet_" + username;
-
-// ===== CONFIG =====
-const SHARE_PRICE = 1000;
-const SHARE_RATE = 0.025;
-const SHARE_DAYS = 40;
-
-const NIFELUX = {
-  1: { cost: 5000, daily: 1000, days: 7 },
-  2: { cost: 13000, daily: 1500, days: 12 },
-  3: { cost: 21000, daily: 2000, days: 15 }
-};
-
-// ===== STORAGE =====
-function getWallet() {
-  return JSON.parse(localStorage.getItem(WALLET_KEY)) || {
-    balance: 0,
-    investments: []
-  };
-}
-
-function saveWallet(w) {
-  localStorage.setItem(WALLET_KEY, JSON.stringify(w));
-  renderWallet();
-}
-
-// ===== UI =====
-function renderWallet() {
-  const w = getWallet();
-  document.getElementById("balance").innerText = w.balance.toLocaleString();
-}
-
-// ===== LOMASHARES =====
-function buyShares() {
-  const shares = Number(document.getElementById("shareInput").value);
-  if (!shares || shares < 1) return alert("Invalid shares");
-
-  const cost = shares * SHARE_PRICE;
-  const w = getWallet();
-  if (w.balance < cost) return alert("Insufficient balance");
-
-  w.balance -= cost;
-
-  const now = Date.now();
-  w.investments.push({
-    id: "LS-" + now,
-    type: "LomaShares",
-    capital: cost,
-    daily: cost * SHARE_RATE,
-    start: now,
-    end: now + SHARE_DAYS * 86400000,
-    completed: false
   });
 
-  saveWallet(w);
-  alert("Investment started");
+  handler.openIframe();
 }
 
-// ===== NIFELUX =====
-function buyProduct(id) {
-  const p = NIFELUX[id];
-  const w = getWallet();
-  if (w.balance < p.cost) return alert("Insufficient balance");
+/*************************************************
+ * WALLET CREDIT
+ *************************************************/
+function creditWallet(amount, ref = "SYSTEM") {
+  const balance = getWalletBalance();
+  const newBalance = balance + amount;
 
-  w.balance -= p.cost;
-  const now = Date.now();
+  setWalletBalance(newBalance);
 
-  w.investments.push({
-    id: "NF-" + now,
-    type: "Nifelux",
-    capital: p.cost,
-    daily: p.daily,
-    start: now,
-    lastPaid: now,
-    end: now + p.days * 86400000,
-    completed: false
+  saveTransaction({
+    type: "credit",
+    amount: amount,
+    reference: ref,
+    balance: newBalance,
+    date: new Date().toISOString()
   });
 
-  saveWallet(w);
+  updateWalletUI();
 }
 
-// ===== AUTO PROCESS =====
-function processInvestments() {
-  const w = getWallet();
-  const now = Date.now();
-  let changed = false;
+/*************************************************
+ * WALLET DEBIT (USED BY SAVINGS / WITHDRAWAL)
+ *************************************************/
+function debitWallet(amount, reason = "Debit") {
+  const balance = getWalletBalance();
 
-  w.investments.forEach(inv => {
-
-    if (inv.completed) return;
-
-    // NIFELUX DAILY CREDIT
-    if (inv.type === "Nifelux") {
-      const days = Math.floor((now - inv.lastPaid) / 86400000);
-      if (days > 0) {
-        w.balance += days * inv.daily;
-        inv.lastPaid += days * 86400000;
-        changed = true;
-      }
-      if (now >= inv.end) inv.completed = true;
-    }
-
-    // LOMASHARES MATURITY
-    if (inv.type === "LomaShares" && now >= inv.end) {
-      const profit = inv.daily * SHARE_DAYS;
-      w.balance += inv.capital + profit;
-      inv.completed = true;
-      changed = true;
-    }
-
-  });
-
-  if (changed) saveWallet(w);
-}
-
-// ===== RENDER INVESTMENTS =====
-function renderInvestments() {
-  const w = getWallet();
-  const el = document.getElementById("investmentList");
-  if (!w.investments.length) {
-    el.innerHTML = "<p>No active investments</p>";
-    return;
+  if (amount > balance) {
+    alert("Insufficient wallet balance");
+    return false;
   }
 
-  el.innerHTML = w.investments.map(i => `
-    <div class="tx">
-      <b>${i.type}</b><br>
-      Capital: ₦${i.capital.toLocaleString()}<br>
-      Daily: ₦${i.daily.toLocaleString()}<br>
-      Status: ${i.completed ? "Completed" : "Running"}
-    </div>
-  `).join("");
+  const newBalance = balance - amount;
+  setWalletBalance(newBalance);
+
+  saveTransaction({
+    type: "debit",
+    amount: amount,
+    reference: reason,
+    balance: newBalance,
+    date: new Date().toISOString()
+  });
+
+  updateWalletUI();
+  return true;
 }
 
-// ===== INIT =====
-document.addEventListener("DOMContentLoaded", () => {
-  processInvestments();
-  renderWallet();
-  renderInvestments();
-});
+/*************************************************
+ * UI BINDING (OPTIONAL)
+ *************************************************/
+function updateWalletUI() {
+  const el = document.getElementById("walletBalance");
+  if (el) el.textContent = formatNaira(getWalletBalance());
+}
+
+/* AUTO INIT */
+document.addEventListener("DOMContentLoaded", updateWalletUI);
